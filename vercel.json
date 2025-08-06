@@ -1,0 +1,21 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "src/index.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "src/index.js"
+    }
+  ],
+  "env": {
+    "LINE_CHANNEL_ACCESS_TOKEN": "@line_channel_access_token",
+    "LINE_CHANNEL_SECRET": "@line_channel_secret",
+    "LINE_GROUP_ID": "@line_group_id",
+    "WEBHOOK_SECRET": "@webhook_secret"
+  }
+}
