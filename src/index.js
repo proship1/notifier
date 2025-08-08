@@ -5,6 +5,8 @@ const { Client } = require('@line/bot-sdk');
 const logger = require('./utils/logger');
 const { formatMessage } = require('./utils/messageFormatter');
 const { validateWebhook } = require('./middleware/webhookValidator');
+const { getGroupIdForUser } = require('./utils/userGroupRouter');
+const { fetchOrderDetails } = require('./utils/proshipApi');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -27,31 +29,63 @@ app.post('/webhook', validateWebhook, async (req, res) => {
   try {
     logger.info('Webhook received', { body: req.body });
     
-    // Helper: Log LINE events to find group ID
-    if (req.body.events && req.body.events.length > 0) {
-      req.body.events.forEach(event => {
-        if (event.source && event.source.groupId) {
-          logger.info(`📍 LINE Group ID Found: ${event.source.groupId}`);
-        }
-        if (event.source && event.source.roomId) {
-          logger.info(`📍 LINE Room ID Found: ${event.source.roomId}`);
-        }
-      });
-      return res.status(200).json({ success: true });
+    // Parse webhook data
+    let webhookData = req.body;
+    let targetUserId = null;
+    let orderId = null;
+    
+    // Extract data from nested JSON if present
+    if (req.body.text && typeof req.body.text === 'string') {
+      try {
+        const parsed = JSON.parse(req.body.text);
+        webhookData = { ...webhookData, ...parsed };
+        targetUserId = parsed.createdBy;
+        orderId = parsed.eId;
+      } catch (e) {
+        // Not nested JSON, use direct values
+      }
     }
     
-    const formattedMessage = formatMessage(req.body);
+    // Get direct values if not from nested JSON
+    if (!targetUserId) {
+      targetUserId = req.body.createdBy;
+    }
+    if (!orderId) {
+      orderId = req.body.eId;
+    }
+    
+    // Route to appropriate group - only send if user is mapped
+    const groupId = getGroupIdForUser(targetUserId, null);
+    
+    if (!groupId) {
+      logger.info('User not mapped - skipping LINE message to save API calls');
+      return res.status(200).json({ 
+        success: true, 
+        message: 'User not mapped - message skipped to save API calls',
+        userId: targetUserId 
+      });
+    }
+    
+    // Fetch customer details from ProShip API if order ID exists
+    if (orderId && targetUserId) {
+      logger.info(`Fetching ProShip details for order ${orderId}`);
+      const orderDetails = await fetchOrderDetails(orderId, targetUserId);
+      
+      if (orderDetails) {
+        // Add customer info to webhook data
+        webhookData.customerName = orderDetails.customerName;
+        webhookData.customerPhone = orderDetails.customerPhone;
+        logger.info('Customer info added to message');
+      }
+    }
+    
+    // Format message with customer info
+    const formattedMessage = formatMessage(webhookData);
     
     const message = {
       type: 'text',
       text: formattedMessage
     };
-    
-    const groupId = process.env.LINE_GROUP_ID;
-    
-    if (!groupId) {
-      throw new Error('LINE_GROUP_ID not configured');
-    }
     
     await lineClient.pushMessage(groupId, message);
     
@@ -60,50 +94,6 @@ app.post('/webhook', validateWebhook, async (req, res) => {
   } catch (error) {
     logger.error('Error processing webhook', { error: error.message });
     res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// LINE webhook endpoint (for receiving LINE events)
-app.post('/line/webhook', async (req, res) => {
-  try {
-    const events = req.body.events || [];
-    
-    for (const event of events) {
-      if (event.source) {
-        const sourceInfo = {
-          type: event.source.type,
-          userId: event.source.userId,
-          groupId: event.source.groupId,
-          roomId: event.source.roomId
-        };
-        
-        logger.info('LINE Event Source Info:', sourceInfo);
-        
-        // Auto-reply with the IDs
-        if (event.type === 'message' && event.replyToken) {
-          let replyText = '📍 Source IDs:\n';
-          if (event.source.groupId) {
-            replyText += `Group ID: ${event.source.groupId}\n`;
-          }
-          if (event.source.roomId) {
-            replyText += `Room ID: ${event.source.roomId}\n`;
-          }
-          if (event.source.userId) {
-            replyText += `User ID: ${event.source.userId}`;
-          }
-          
-          await lineClient.replyMessage(event.replyToken, {
-            type: 'text',
-            text: replyText
-          });
-        }
-      }
-    }
-    
-    res.status(200).json({ success: true });
-  } catch (error) {
-    logger.error('Error processing LINE webhook', { error: error.message });
-    res.status(200).json({ success: true }); // Return 200 to prevent LINE retries
   }
 });
 
