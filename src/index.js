@@ -1,15 +1,26 @@
 require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
+const path = require('path');
 const { Client } = require('@line/bot-sdk');
 const logger = require('./utils/logger');
 const { formatMessage } = require('./utils/messageFormatter');
 const { validateWebhook } = require('./middleware/webhookValidator');
 const { getGroupIdForUser } = require('./utils/userGroupRouter');
 const { fetchOrderDetails } = require('./utils/proshipApi');
+const { initializeRedis } = require('./utils/redisClient');
+const { cleanupExpiredSessions } = require('./utils/setupManager');
+
+// Import new routes
+const lineWebhookRouter = require('./routes/lineWebhook');
+const setupFormRouter = require('./routes/setupForm');
 
 const app = express();
 const port = process.env.PORT || 3000;
+
+// Set up EJS template engine
+app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'views'));
 
 const lineConfig = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
@@ -21,8 +32,25 @@ const lineClient = new Client(lineConfig);
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
+// Add new routes
+app.use('/line/webhook', lineWebhookRouter);
+app.use('/setup', setupFormRouter);
+
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'healthy', timestamp: new Date().toISOString() });
+});
+
+// GET /find-group-id endpoint for LINE group ID finder
+app.get('/find-group-id', (req, res) => {
+  res.json({
+    success: true,
+    message: 'เพิ่มบอทนี้เข้ากลุ่ม LINE แล้วพิมพ์ "หา group id" เพื่อดู Group ID',
+    instructions: [
+      '1. เพิ่มบอทเข้ากลุ่ม LINE',
+      '2. พิมพ์ "หา group id" ในกลุ่ม',
+      '3. บอทจะแสดง Group ID ให้'
+    ]
+  });
 });
 
 app.post('/webhook', validateWebhook, async (req, res) => {
@@ -55,7 +83,7 @@ app.post('/webhook', validateWebhook, async (req, res) => {
     }
     
     // Route to appropriate group - only send if user is mapped
-    const groupId = getGroupIdForUser(targetUserId, null);
+    const groupId = await getGroupIdForUser(targetUserId, null);
     
     if (!groupId) {
       logger.info('User not mapped - skipping LINE message to save API calls');
@@ -102,6 +130,32 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-app.listen(port, () => {
-  logger.info(`Webhook notifier service running on port ${port}`);
-});
+// Initialize Redis and start server
+const startServer = async () => {
+  try {
+    // Initialize Redis connection
+    await initializeRedis();
+    logger.info('Redis initialization completed');
+    
+    // Schedule periodic cleanup of expired setup sessions (every hour)
+    setInterval(async () => {
+      try {
+        await cleanupExpiredSessions();
+      } catch (error) {
+        logger.error('Setup sessions cleanup failed', { error: error.message });
+      }
+    }, 60 * 60 * 1000); // 1 hour
+    
+    // Start HTTP server
+    app.listen(port, () => {
+      logger.info(`Webhook notifier service running on port ${port}`);
+      logger.info('LINE Bot setup system ready');
+      logger.info(`Setup forms available at: ${process.env.BASE_URL || 'http://localhost:' + port}/setup/GROUP_ID`);
+    });
+  } catch (error) {
+    logger.error('Failed to start server', { error: error.message });
+    process.exit(1);
+  }
+};
+
+startServer();

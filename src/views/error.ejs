@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %></title>
+    <meta name="theme-color" content="#06C755">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%);
+            min-height: 100vh;
+            padding: 20px 16px;
+            color: #333;
+            line-height: 1.6;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .container {
+            max-width: 400px;
+            width: 100%;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+            animation: fadeIn 0.5s ease-out;
+        }
+        
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%);
+            padding: 30px 20px;
+            text-align: center;
+            color: white;
+        }
+        
+        .header-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        
+        .content {
+            padding: 30px 20px;
+            text-align: center;
+        }
+        
+        .message {
+            font-size: 16px;
+            color: #666;
+            margin-bottom: 30px;
+            white-space: pre-line;
+        }
+        
+        .button {
+            display: inline-block;
+            background: linear-gradient(135deg, #06C755 0%, #04A847 100%);
+            color: white;
+            text-decoration: none;
+            padding: 16px 32px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(6, 199, 85, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-icon">😞</div>
+            <h1><%= title %></h1>
+        </div>
+        
+        <div class="content">
+            <p class="message"><%= message %></p>
+            <a href="<%= buttonUrl %>" class="button"><%= buttonText %></a>
+        </div>
+    </div>
+    
+    <script>
+        // Auto-close in LINE app after 10 seconds
+        setTimeout(() => {
+            if (typeof liff !== 'undefined' && liff.isInClient()) {
+                liff.closeWindow();
+            }
+        }, 10000);
+    </script>
+</body>
+</html>

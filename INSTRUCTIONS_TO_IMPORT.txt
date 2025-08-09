@@ -1,0 +1,95 @@
+# Redis Bulk Import Instructions
+
+## CSV Format for User Data
+
+Create a CSV file named `users.csv` with the following format:
+
+```csv
+userId,groupId,apiKey
+user-e8d394b0-bafb-11eb-ac73-d5dec46ffb141621687667067,C070bd4cccee25ab3b4984f22d8c659e3,eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImdpYnphMjUyODI1MjhAZ21haWwuY29tIiwiaWQiOiJ1c2VyLWU4ZDM5NGIwLWJhZmItMTFlYi1hYzczLWQ1ZGVjNDZmZmIxNDE2MjE2ODc2NjcwNjciLCJyb2xlIjoic2VsbGVyIiwidXNlcm5hbWUiOiIuIiwiYmFsYW5jZSI6MCwiaWF0IjoxNzU0NDcxMzYwfQ.AZK9cQCkmoweI5N266IvUXswxtzVFe1gp51pE-HaD_4
+user-abc123,C48d238bd3d597bb15e223c18154a8d35,eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6InVzZXItYWJjMTIzIn0.xxxxx
+user-def456,C48d238bd3d597bb15e223c18154a8d35,eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6InVzZXItZGVmNDU2In0.yyyyy
+user-ghi789,C070bd4cccee25ab3b4984f22d8c659e3,eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6InVzZXItZ2hpNzg5In0.zzzzz
+```
+
+## Method 1: Using AWK (One-liner)
+
+Convert CSV and import directly to Redis:
+
+```bash
+awk -F',' 'NR>1 {print "HSET user:"$1" groupId "$2"\nHSET user:"$1" apiKey "$3}' users.csv | redis-cli -u "redis://default:19216d64034649b7a380eaa53cfa29f1@fly-notis.upstash.io:6379" --pipe
+```
+
+## Method 2: Using Bash Script
+
+1. Create a conversion script `csv_to_redis.sh`:
+
+```bash
+#!/bin/bash
+while IFS=',' read -r userId groupId apiKey
+do
+  # Skip header line
+  if [ "$userId" != "userId" ]; then
+    echo "HSET user:$userId groupId $groupId"
+    echo "HSET user:$userId apiKey $apiKey"
+  fi
+done < users.csv > redis_import.txt
+```
+
+2. Run the conversion:
+
+```bash
+bash csv_to_redis.sh
+```
+
+3. Import to Redis:
+
+```bash
+cat redis_import.txt | redis-cli -u "redis://default:19216d64034649b7a380eaa53cfa29f1@fly-notis.upstash.io:6379" --pipe
+```
+
+## Method 3: Using Fly.io Redis CLI
+
+1. First convert CSV to Redis commands using either method above
+2. Connect to Fly Redis:
+
+```bash
+fly redis connect Notis
+```
+
+3. Copy and paste the HSET commands directly
+
+## Redis Commands Reference
+
+### Add single user:
+```bash
+HSET user:userId groupId groupIdValue
+HSET user:userId apiKey apiKeyValue
+```
+
+### View all users:
+```bash
+KEYS user:*
+```
+
+### View specific user data:
+```bash
+HGETALL user:userId
+```
+
+### Delete specific user:
+```bash
+DEL user:userId
+```
+
+### Clear all data (WARNING - deletes everything):
+```bash
+FLUSHALL
+```
+
+## Notes
+
+- The CSV format makes it easy to manage users in Excel or Google Sheets
+- Always test with a few users first before bulk importing
+- The redis-cli --pipe method is fastest for bulk imports
+- Keep backups of your CSV files for reference

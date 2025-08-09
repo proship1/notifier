@@ -5,7 +5,7 @@ const { getUserApiKey } = require('./userGroupRouter');
 const fetchOrderDetails = async (orderId, userId) => {
   try {
     // Get user's API key
-    const apiKey = getUserApiKey(userId);
+    const apiKey = await getUserApiKey(userId);
     
     if (!apiKey) {
       logger.warn(`No API key found for user ${userId}`);
