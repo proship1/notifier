@@ -29,7 +29,15 @@ const lineConfig = {
 
 const lineClient = new Client(lineConfig);
 
-app.use(bodyParser.json());
+// Apply body parser to all routes EXCEPT LINE webhook (which needs raw body for signature)
+app.use((req, res, next) => {
+  if (req.path === '/line/webhook' && req.method === 'POST') {
+    // Skip body parsing for LINE webhook
+    next();
+  } else {
+    bodyParser.json()(req, res, next);
+  }
+});
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // Add new routes
