@@ -8,12 +8,17 @@ const { formatMessage } = require('./utils/messageFormatter');
 const { validateWebhook } = require('./middleware/webhookValidator');
 const { getGroupIdForUser } = require('./utils/userGroupRouter');
 const { fetchOrderDetails } = require('./utils/proshipApi');
-const { initializeRedis } = require('./utils/redisClient');
+const { initializeRedis, getRedisClient } = require('./utils/redisClient');
 const { cleanupExpiredSessions } = require('./utils/setupManager');
+const trackingMonitor = require('./utils/trackingMonitor');
 
 // Import new routes
 const lineWebhookRouter = require('./routes/lineWebhook');
 const setupFormRouter = require('./routes/setupForm');
+const trackingReportRouter = require('./routes/trackingReport');
+const clearStatsRouter = require('./routes/clearStats');
+const groupsReportRouter = require('./routes/groupsReport');
+const redisCheckRouter = require('./routes/redisCheck');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -43,6 +48,10 @@ app.use(bodyParser.urlencoded({ extended: true }));
 // Add new routes
 app.use('/line/webhook', lineWebhookRouter);
 app.use('/setup', setupFormRouter);
+app.use('/tracking-report', trackingReportRouter);
+app.use('/clear-stats', clearStatsRouter);
+app.use('/groups-report', groupsReportRouter);
+app.use('/redis-check', redisCheckRouter);
 
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'healthy', timestamp: new Date().toISOString() });
@@ -69,6 +78,7 @@ app.post('/webhook', validateWebhook, async (req, res) => {
     let webhookData = req.body;
     let targetUserId = null;
     let orderId = null;
+    let trackingNo = null;
     
     // Extract data from nested JSON if present
     if (req.body.text && typeof req.body.text === 'string') {
@@ -77,6 +87,7 @@ app.post('/webhook', validateWebhook, async (req, res) => {
         webhookData = { ...webhookData, ...parsed };
         targetUserId = parsed.createdBy;
         orderId = parsed.eId;
+        trackingNo = parsed.trackingNo;
       } catch (e) {
         // Not nested JSON, use direct values
       }
@@ -88,6 +99,52 @@ app.post('/webhook', validateWebhook, async (req, res) => {
     }
     if (!orderId) {
       orderId = req.body.eId;
+    }
+    if (!trackingNo) {
+      trackingNo = req.body.trackingNo;
+    }
+
+    // Monitor tracking number for statistics only (not blocking)
+    // Commented out 24-hour blocking - using 1-hour order ID deduplication only
+    if (trackingNo && orderId && targetUserId) {
+      try {
+        const monitorResult = await trackingMonitor.recordTracking(trackingNo, orderId, targetUserId);
+        
+        logger.info('Tracking monitoring result', {
+          trackingNo,
+          orderId,
+          isDuplicate: monitorResult.isDuplicate,
+          occurrenceCount: monitorResult.occurrenceCount,
+          timeSinceFirst: monitorResult.timeSinceFirst
+        });
+        
+        // 24-hour blocking disabled - relying on 1-hour order ID deduplication
+        // if (monitorResult.isDuplicate) {
+        //   logger.warn('BLOCKING DUPLICATE TRACKING NUMBER', {
+        //     trackingNo,
+        //     orderId,
+        //     occurrenceCount: monitorResult.occurrenceCount,
+        //     timeSinceFirst: `${(monitorResult.timeSinceFirst / 1000 / 60).toFixed(2)} minutes`
+        //   });
+        //   
+        //   return res.status(200).json({ 
+        //     success: true, 
+        //     message: 'Duplicate tracking number blocked - LINE message skipped',
+        //     trackingNo,
+        //     orderId,
+        //     isDuplicate: true,
+        //     occurrenceCount: monitorResult.occurrenceCount,
+        //     timeSinceFirstMinutes: (monitorResult.timeSinceFirst / 1000 / 60).toFixed(2)
+        //   });
+        // }
+      } catch (error) {
+        // Monitoring errors should not affect webhook processing
+        logger.warn('Tracking monitoring failed, continuing with webhook processing', {
+          error: error.message,
+          trackingNo,
+          orderId
+        });
+      }
     }
     
     // Route to appropriate group - only send if user is mapped
@@ -122,6 +179,44 @@ app.post('/webhook', validateWebhook, async (req, res) => {
       type: 'text',
       text: formattedMessage
     };
+    
+    // Check for duplicate order ID to prevent duplicate LINE messages
+    if (orderId) {
+      try {
+        const redis = getRedisClient();
+        if (redis) {
+          const dedupKey = `dedup:order:${orderId}`;
+          const existing = await redis.get(dedupKey);
+          
+          if (existing) {
+            logger.info('Duplicate order detected - skipping LINE message', {
+              orderId,
+              trackingNo,
+              firstSent: JSON.parse(existing).timestamp
+            });
+            return res.status(200).json({ 
+              success: true, 
+              message: 'Duplicate order - LINE message skipped',
+              orderId,
+              deduplicated: true
+            });
+          }
+          
+          // Cache order ID for 12 hours (43200 seconds)
+          await redis.setEx(dedupKey, 43200, JSON.stringify({
+            orderId,
+            timestamp: new Date().toISOString(),
+            trackingNo
+          }));
+        }
+      } catch (dedupError) {
+        // Don't fail webhook processing if deduplication fails
+        logger.warn('Order deduplication check failed, continuing with LINE message', {
+          error: dedupError.message,
+          orderId
+        });
+      }
+    }
     
     await lineClient.pushMessage(groupId, message);
     
