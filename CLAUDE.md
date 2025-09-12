@@ -49,3 +49,8 @@ Required:
 Optional:
 - `WEBHOOK_SECRET`: For signature validation
 - `MESSAGE_TEMPLATE`: Custom message format with `{{placeholder}}` syntax
+- do not turn off FLY except if explicitly asked to do so
+- always give me options of using analytics or dev consoles - when there is an option; dont write code for everything
+- our endpoint https://webhook-line-notifier.fly.dev
+- we dont local testing; things are running on fly
+- dont make code changes; unless asked to do so

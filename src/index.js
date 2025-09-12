@@ -11,6 +11,7 @@ const { fetchOrderDetails } = require('./utils/proshipApi');
 const { initializeRedis, getRedisClient } = require('./utils/redisClient');
 const { cleanupExpiredSessions } = require('./utils/setupManager');
 const trackingMonitor = require('./utils/trackingMonitor');
+const batchManager = require('./utils/batchManager');
 
 // Import new routes
 const lineWebhookRouter = require('./routes/lineWebhook');
@@ -19,6 +20,7 @@ const trackingReportRouter = require('./routes/trackingReport');
 const clearStatsRouter = require('./routes/clearStats');
 const groupsReportRouter = require('./routes/groupsReport');
 const redisCheckRouter = require('./routes/redisCheck');
+const batchStatusRouter = require('./routes/batchStatus');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -52,6 +54,7 @@ app.use('/tracking-report', trackingReportRouter);
 app.use('/clear-stats', clearStatsRouter);
 app.use('/groups-report', groupsReportRouter);
 app.use('/redis-check', redisCheckRouter);
+app.use('/batch-status', batchStatusRouter);
 
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'healthy', timestamp: new Date().toISOString() });
@@ -218,10 +221,21 @@ app.post('/webhook', validateWebhook, async (req, res) => {
       }
     }
     
-    await lineClient.pushMessage(groupId, message);
+    // BULLETPROOF BATCHING: Try batch, fallback to immediate on ANY error
+    const originalSendFunction = async () => {
+      await lineClient.pushMessage(groupId, message);
+      logger.info('Message sent to LINE group successfully');
+      return { success: true, immediate: true };
+    };
+
+    const result = await batchManager.processWebhook(webhookData, groupId, originalSendFunction);
     
-    logger.info('Message sent to LINE group successfully');
-    res.status(200).json({ success: true, message: 'Notification sent' });
+    if (result.batched) {
+      logger.info('Message added to batch successfully', { groupId, trackingNo });
+      res.status(200).json({ success: true, message: 'Notification batched', batched: true });
+    } else {
+      res.status(200).json({ success: true, message: 'Notification sent', batched: false });
+    }
   } catch (error) {
     logger.error('Error processing webhook', { error: error.message });
     res.status(500).json({ success: false, error: error.message });

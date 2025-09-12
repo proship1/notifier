@@ -1,0 +1,14 @@
+=== TRACKING NUMBER DUPLICATION ANALYSIS ===
+Generated: Fri Aug 15 13:03:09 +07 2025
+
+Total webhook messages:       27
+
+Duplicate Tracking Numbers (sent more than once):
+=================================================
+2 times: TH66077JFWMR3A
+2 times: TH20047MBEF04B1
+
+Summary:
+--------
+Unique tracking numbers:       25
+Duplicate messages: 2
