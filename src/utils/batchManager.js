@@ -273,13 +273,21 @@ class BatchManager {
       if (!redis) return { error: 'Redis unavailable' };
 
       const batchKeys = await redis.keys('batch:*');
-      const status = { batches: [], stats: this.stats };
+      const status = {
+        batches: [],
+        stats: this.stats,
+        config: {
+          enabled: this.enabled,
+          batchSize: this.batchSize,
+          batchInterval: this.batchInterval
+        }
+      };
 
       for (const batchKey of batchKeys) {
         const groupId = batchKey.replace('batch:', '');
         const count = await redis.lLen(batchKey);
         const hasTimer = this.timers.has(groupId);
-        
+
         status.batches.push({
           groupId,
           messageCount: count,

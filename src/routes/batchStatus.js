@@ -62,8 +62,11 @@ router.get('/stats', async (req, res) => {
 });
 
 function generateStatusHTML(status) {
-  const { batches, stats } = status;
+  const { batches, stats, config } = status;
   const totalPending = batches.reduce((sum, batch) => sum + batch.messageCount, 0);
+  const batchSize = config?.batchSize || 10;
+  const batchInterval = config?.batchInterval || 300000;
+  const enabled = config?.enabled || false;
   
   return `
 <!DOCTYPE html>
@@ -98,9 +101,9 @@ function generateStatusHTML(status) {
     <div class="container">
         <div class="header">
             <h1>🔄 Batch Manager Status</h1>
-            <p><strong>Generated:</strong> ${new Date().toLocaleString()} | 
-               <strong>Batching:</strong> <span class="${process.env.ENABLE_BATCHING === 'true' ? 'enabled' : 'disabled'}">
-               ${process.env.ENABLE_BATCHING === 'true' ? 'ENABLED' : 'DISABLED'}</span></p>
+            <p><strong>Generated:</strong> ${new Date().toLocaleString()} |
+               <strong>Batching:</strong> <span class="${enabled ? 'enabled' : 'disabled'}">
+               ${enabled ? 'ENABLED' : 'DISABLED'}</span></p>
             <button class="button" onclick="location.reload()">🔄 Refresh</button>
             <button class="button danger" onclick="flushBatches()">⚡ Flush All Batches</button>
         </div>
@@ -124,7 +127,7 @@ function generateStatusHTML(status) {
             </div>
         </div>
 
-        ${process.env.ENABLE_BATCHING !== 'true' ? 
+        ${!enabled ? 
           '<div class="alert info">ℹ️ <strong>Batching is currently DISABLED.</strong> All messages are being sent immediately.</div>' :
           totalPending === 0 ?
           '<div class="alert success">✅ <strong>No pending batches.</strong> All messages are being processed normally.</div>' :
@@ -147,9 +150,9 @@ function generateStatusHTML(status) {
                     ${batches.map(batch => `
                         <tr>
                             <td>${batch.groupId.substring(0, 8)}...</td>
-                            <td>${batch.messageCount}/5</td>
+                            <td>${batch.messageCount}/${batchSize}</td>
                             <td>${batch.hasTimer ? '⏰ Yes' : '❌ No'}</td>
-                            <td>${batch.messageCount >= 5 ? '🔥 Full (will send soon)' : '⏳ Waiting'}</td>
+                            <td>${batch.messageCount >= batchSize ? '🔥 Full (will send soon)' : '⏳ Waiting'}</td>
                         </tr>
                     `).join('')}
                 </tbody>
@@ -160,9 +163,9 @@ function generateStatusHTML(status) {
         <div class="section">
             <h3>📊 Configuration</h3>
             <ul>
-                <li><strong>Batch Size:</strong> ${process.env.BATCH_SIZE || 5} messages</li>
-                <li><strong>Batch Interval:</strong> ${(parseInt(process.env.BATCH_INTERVAL_MS || 300000) / 1000 / 60)} minutes</li>
-                <li><strong>Enabled:</strong> ${process.env.ENABLE_BATCHING === 'true' ? 'Yes' : 'No'}</li>
+                <li><strong>Batch Size:</strong> ${batchSize} messages</li>
+                <li><strong>Batch Interval:</strong> ${(batchInterval / 1000 / 60)} minutes</li>
+                <li><strong>Enabled:</strong> ${enabled ? 'Yes' : 'No'}</li>
             </ul>
         </div>
 
