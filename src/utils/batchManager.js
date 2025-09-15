@@ -5,7 +5,7 @@ class BatchManager {
   constructor() {
     this.enabled = process.env.ENABLE_BATCHING === 'true';
     this.batchInterval = parseInt(process.env.BATCH_INTERVAL_MS || '300000'); // 5 minutes
-    this.batchSize = parseInt(process.env.BATCH_SIZE || '5'); // 5 messages
+    this.batchSize = parseInt(process.env.BATCH_SIZE || '10'); // 10 messages
     this.timers = new Map(); // Group timers
     this.stats = {
       batchesSent: 0,
@@ -77,7 +77,7 @@ class BatchManager {
       this.startBatchTimer(groupId, batchKey);
     }
 
-    // Check if batch is full (5 messages)
+    // Check if batch is full (10 messages)
     if (batchCount >= this.batchSize) {
       logger.info(`Batch full (${batchCount}), processing immediately`, { groupId });
       this.clearBatchTimer(groupId);
