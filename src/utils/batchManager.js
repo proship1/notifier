@@ -4,7 +4,7 @@ const logger = require('./logger');
 class BatchManager {
   constructor() {
     this.enabled = process.env.ENABLE_BATCHING === 'true';
-    this.batchInterval = parseInt(process.env.BATCH_INTERVAL_MS || '300000'); // 5 minutes
+    this.batchInterval = parseInt(process.env.BATCH_INTERVAL_MS || '900000'); // 15 minutes
     this.batchSize = parseInt(process.env.BATCH_SIZE || '10'); // 10 messages
     this.timers = new Map(); // Group timers
     this.stats = {
@@ -88,14 +88,14 @@ class BatchManager {
   }
 
   /**
-   * Start 5-minute timer for batch
+   * Start 15-minute timer for batch
    */
   startBatchTimer(groupId, batchKey) {
     // Clear existing timer
     this.clearBatchTimer(groupId);
 
     const timer = setTimeout(() => {
-      logger.info(`Batch timer expired (5 min), processing batch`, { groupId });
+      logger.info(`Batch timer expired (15 min), processing batch`, { groupId });
       this.processBatch(batchKey, groupId);
     }, this.batchInterval);
 
